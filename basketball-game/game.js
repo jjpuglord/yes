@@ -1,23 +1,44 @@
-/* ===== HOOPLAND BASKETBALL GAME ENGINE ===== */
-/* Complete Physics Engine, AI System, and Game Logic */
+// ===== BASKETBALL STARS - GAME ENGINE =====
 
-// ===== CONSTANTS =====
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 700;
-const PLAYER_SPEED = 4;
-const PLAYER_SPRINT_SPEED = 6;
-const MAX_STAMINA = 100;
-const STAMINA_DRAIN_RATE = 0.8;
-const STAMINA_REGEN_RATE = 0.4;
-const GRAVITY = 0.3;
-const FRICTION = 0.98;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Resize canvas to fit container
+function resizeCanvas() {
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ===== GAME CONSTANTS =====
+const COURT_WIDTH = canvas.width;
+const COURT_HEIGHT = canvas.height;
+const HOOP_X = COURT_WIDTH / 2;
+const HOOP_Y = COURT_HEIGHT * 0.15;
+const HOOP_RADIUS = 25;
 const BALL_RADIUS = 12;
-const PLAYER_RADIUS = 15;
-const HOOP_RADIUS = 30;
-const HOOP_X = CANVAS_WIDTH / 2;
-const HOOP_Y = CANVAS_HEIGHT - 150;
-const GAME_DURATION = 12 * 60; // 12 minutes in seconds
-const COURT_PADDING = 50;
+const PLAYER_RADIUS = 18;
+const GRAVITY = 0.5;
+const FRICTION = 0.97;
+const GAME_TIME = 90;
+
+let gameState = {
+    running: false,
+    paused: false,
+    playerScore: 0,
+    opponentScore: 0,
+    timeRemaining: GAME_TIME,
+    difficulty: 'normal'
+};
+
+let player = null;
+let opponent = null;
+let ball = null;
+let mouseX = 0;
+let mouseY = 0;
+let isAiming = false;
+let aimPower = 0;
 
 // ===== VECTOR CLASS =====
 class Vector {
@@ -59,438 +80,276 @@ class Vector {
     }
 }
 
-// ===== PLAYER CLASS =====
-class Player {
-    constructor(x, y, team) {
-        this.position = new Vector(x, y);
-        this.velocity = new Vector(0, 0);
-        this.team = team; // 1 or 2
-        this.stamina = MAX_STAMINA;
-        this.hasBall = false;
-        this.radius = PLAYER_RADIUS;
-        this.isSprinting = false;
-        this.direction = new Vector(1, 0);
-    }
-
-    update(keys, mousePos, ballPos) {
-        // Movement input
-        let moveVector = new Vector(0, 0);
-        let isSprinting = false;
-
-        if (keys['w'] || keys['W']) moveVector.y -= 1;
-        if (keys['s'] || keys['S']) moveVector.y += 1;
-        if (keys['a'] || keys['A']) moveVector.x -= 1;
-        if (keys['d'] || keys['D']) moveVector.x += 1;
-        if (keys['Shift']) isSprinting = true;
-
-        // Normalize movement
-        if (moveVector.magnitude() > 0) {
-            moveVector = moveVector.normalize();
-            this.direction = moveVector.copy();
-        }
-
-        // Apply speed
-        let currentSpeed = PLAYER_SPEED;
-        if (isSprinting && this.stamina > 0 && moveVector.magnitude() > 0) {
-            currentSpeed = PLAYER_SPRINT_SPEED;
-            this.stamina -= STAMINA_DRAIN_RATE;
-            this.isSprinting = true;
-        } else {
-            this.isSprinting = false;
-        }
-
-        // Stamina regeneration
-        if (!isSprinting) {
-            this.stamina = Math.min(this.stamina + STAMINA_REGEN_RATE, MAX_STAMINA);
-        }
-
-        // Apply velocity
-        this.velocity = moveVector.multiply(currentSpeed);
-
-        // Update position
-        this.position = this.position.add(this.velocity);
-
-        // Boundary collision
-        if (this.position.x - this.radius < COURT_PADDING) this.position.x = COURT_PADDING + this.radius;
-        if (this.position.x + this.radius > CANVAS_WIDTH - COURT_PADDING) this.position.x = CANVAS_WIDTH - COURT_PADDING - this.radius;
-        if (this.position.y - this.radius < COURT_PADDING) this.position.y = COURT_PADDING + this.radius;
-        if (this.position.y + this.radius > CANVAS_HEIGHT - COURT_PADDING) this.position.y = CANVAS_HEIGHT - COURT_PADDING - this.radius;
-
-        // Limit stamina
-        this.stamina = Math.max(0, Math.min(this.stamina, MAX_STAMINA));
-    }
-
-    draw(ctx) {
-        // Draw player circle
-        ctx.fillStyle = this.team === 1 ? '#FF4444' : '#4444FF';
-        ctx.beginPath();
-        ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Draw team number
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('P', this.position.x, this.position.y);
-
-        // Highlight if has ball
-        if (this.hasBall) {
-            ctx.strokeStyle = '#FFD700';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(this.position.x, this.position.y, this.radius + 5, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-    }
-}
-
 // ===== BALL CLASS =====
 class Ball {
     constructor(x, y) {
         this.position = new Vector(x, y);
         this.velocity = new Vector(0, 0);
         this.radius = BALL_RADIUS;
-        this.owner = null;
     }
 
     update() {
-        // Apply gravity
+        // Gravity
         this.velocity.y += GRAVITY;
 
-        // Apply friction
+        // Friction
         this.velocity.x *= FRICTION;
         this.velocity.y *= FRICTION;
 
-        // Update position
+        // Position update
         this.position = this.position.add(this.velocity);
 
-        // Boundary collision
-        if (this.position.x - this.radius < COURT_PADDING) {
-            this.position.x = COURT_PADDING + this.radius;
-            this.velocity.x *= -0.7;
-        }
-        if (this.position.x + this.radius > CANVAS_WIDTH - COURT_PADDING) {
-            this.position.x = CANVAS_WIDTH - COURT_PADDING - this.radius;
-            this.velocity.x *= -0.7;
-        }
-        if (this.position.y - this.radius < COURT_PADDING) {
-            this.position.y = COURT_PADDING + this.radius;
+        // Boundary collisions
+        // Top
+        if (this.position.y - this.radius < 0) {
+            this.position.y = this.radius;
             this.velocity.y *= -0.7;
         }
-        if (this.position.y + this.radius > CANVAS_HEIGHT - COURT_PADDING) {
-            this.position.y = CANVAS_HEIGHT - COURT_PADDING - this.radius;
+        // Bottom
+        if (this.position.y + this.radius > COURT_HEIGHT) {
+            this.position.y = COURT_HEIGHT - this.radius;
             this.velocity.y *= -0.7;
+        }
+        // Left
+        if (this.position.x - this.radius < 0) {
+            this.position.x = this.radius;
+            this.velocity.x *= -0.7;
+        }
+        // Right
+        if (this.position.x + this.radius > COURT_WIDTH) {
+            this.position.x = COURT_WIDTH - this.radius;
+            this.velocity.x *= -0.7;
         }
     }
 
-    draw(ctx) {
+    draw() {
         // Draw ball
         ctx.fillStyle = '#FF8C00';
         ctx.beginPath();
         ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // Draw highlights
-        ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
-        ctx.lineWidth = 2;
+        // Draw shine
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.beginPath();
-        ctx.arc(this.position.x - 5, this.position.y - 5, 3, 0, Math.PI * 2);
+        ctx.arc(this.position.x - 5, this.position.y - 5, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ball lines
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(this.position.x, this.position.y, this.radius - 2, 0, Math.PI * 2);
         ctx.stroke();
     }
 
     shoot(direction, power) {
         this.velocity = direction.multiply(power);
-        this.owner = null;
     }
 }
 
-// ===== MAIN GAME ENGINE =====
-let gameState = {
-    canvas: null,
-    ctx: null,
-    players: [],
-    ball: null,
-    score1: 0,
-    score2: 0,
-    gameTime: GAME_DURATION,
-    isActive: false,
-    isPaused: false,
-    gameOver: false,
-    keys: {},
-    mousePos: new Vector(0, 0),
-    isAiming: false,
-    shootPower: 0,
-};
-
-// ===== INITIALIZATION =====
-function initGame() {
-    gameState.canvas = document.getElementById('gameCanvas');
-    gameState.ctx = gameState.canvas.getContext('2d');
-    gameState.players = [];
-    gameState.ball = new Ball(HOOP_X, HOOP_Y - 200);
-    gameState.score1 = 0;
-    gameState.score2 = 0;
-    gameState.gameTime = GAME_DURATION;
-    gameState.isActive = true;
-    gameState.isPaused = false;
-    gameState.gameOver = false;
-
-    // Create player (Team 1)
-    gameState.players.push(new Player(HOOP_X - 200, CANVAS_HEIGHT / 2, 1));
-
-    // Create 4 AI teammates (Team 1)
-    for (let i = 0; i < 4; i++) {
-        const x = HOOP_X - 200 + (Math.random() - 0.5) * 100;
-        const y = CANVAS_HEIGHT / 2 + (Math.random() - 0.5) * 150;
-        gameState.players.push(new Player(x, y, 1));
+// ===== PLAYER CLASS =====
+class Player {
+    constructor(x, y, isOpponent = false) {
+        this.position = new Vector(x, y);
+        this.velocity = new Vector(0, 0);
+        this.radius = PLAYER_RADIUS;
+        this.isOpponent = isOpponent;
+        this.hasBall = false;
+        this.color = isOpponent ? '#4488FF' : '#FF5722';
     }
 
-    // Create 5 AI opponents (Team 2)
-    for (let i = 0; i < 5; i++) {
-        const x = HOOP_X + 200 + (Math.random() - 0.5) * 100;
-        const y = CANVAS_HEIGHT / 2 + (Math.random() - 0.5) * 150;
-        gameState.players.push(new Player(x, y, 2));
-    }
+    update() {
+        // Movement based on mouse (player only)
+        if (!this.isOpponent) {
+            // Mouse control
+            const dx = mouseX - this.position.x;
+            const dy = mouseY - this.position.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // Give ball to a random player
-    const randomPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-    randomPlayer.hasBall = true;
-    gameState.ball.owner = randomPlayer;
-
-    // Setup input listeners
-    setupInputListeners();
-    updateHUD();
-}
-
-// ===== INPUT HANDLING =====
-function setupInputListeners() {
-    document.addEventListener('keydown', (e) => {
-        gameState.keys[e.key] = true;
-        if (e.key === 'p' || e.key === 'P') togglePause();
-    });
-
-    document.addEventListener('keyup', (e) => {
-        gameState.keys[e.key] = false;
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        const rect = gameState.canvas.getBoundingClientRect();
-        gameState.mousePos.x = e.clientX - rect.left;
-        gameState.mousePos.y = e.clientY - rect.top;
-    });
-
-    document.addEventListener('mousedown', (e) => {
-        if (gameState.isActive && !gameState.isPaused) {
-            const player = gameState.players[0];
-            if (player.hasBall) {
-                gameState.isAiming = true;
-                gameState.shootPower = 0;
+            if (dist > 50) {
+                this.velocity.x = (dx / dist) * 6;
+                this.velocity.y = (dy / dist) * 6;
+            } else {
+                this.velocity.x *= 0.9;
+                this.velocity.y *= 0.9;
             }
-        }
-    });
-
-    document.addEventListener('mouseup', (e) => {
-        if (gameState.isAiming) {
-            shootBall();
-            gameState.isAiming = false;
-            gameState.shootPower = 0;
-        }
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space' && gameState.isActive && !gameState.isPaused) {
-            passBall();
-        }
-    });
-}
-
-// ===== GAME LOGIC =====
-function shootBall() {
-    const player = gameState.players[0];
-    if (!player.hasBall) return;
-
-    const direction = gameState.mousePos.subtract(player.position).normalize();
-    const power = 3 + gameState.shootPower * 0.1;
-
-    gameState.ball.shoot(direction, power);
-    player.hasBall = false;
-    gameState.ball.owner = null;
-}
-
-function passBall() {
-    const player = gameState.players[0];
-    if (!player.hasBall) return;
-
-    // Find nearest teammate
-    let nearest = null;
-    let minDist = Infinity;
-
-    for (let p of gameState.players) {
-        if (p.team === player.team && p !== player) {
-            const dist = player.position.distance(p.position);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = p;
-            }
-        }
-    }
-
-    if (nearest) {
-        const direction = nearest.position.subtract(player.position).normalize();
-        gameState.ball.shoot(direction, 5);
-        player.hasBall = false;
-    }
-}
-
-function updateAI() {
-    for (let i = 1; i < gameState.players.length; i++) {
-        const player = gameState.players[i];
-        const dist = player.position.distance(gameState.ball.position);
-
-        // Move toward ball
-        const direction = gameState.ball.position.subtract(player.position).normalize();
-        player.velocity = direction.multiply(dist > 200 ? PLAYER_SPRINT_SPEED : PLAYER_SPEED);
-
-        // Sprint logic
-        if (dist > 200 && player.stamina > 20) {
-            player.isSprinting = true;
-            player.stamina -= STAMINA_DRAIN_RATE;
         } else {
-            player.isSprinting = false;
-            player.stamina = Math.min(player.stamina + STAMINA_REGEN_RATE, MAX_STAMINA);
+            // AI opponent movement
+            this.updateAI();
         }
 
-        // Update position with boundary checking
-        player.position = player.position.add(player.velocity);
-        if (player.position.x - player.radius < COURT_PADDING) player.position.x = COURT_PADDING + player.radius;
-        if (player.position.x + player.radius > CANVAS_WIDTH - COURT_PADDING) player.position.x = CANVAS_WIDTH - COURT_PADDING - player.radius;
-        if (player.position.y - player.radius < COURT_PADDING) player.position.y = COURT_PADDING + player.radius;
-        if (player.position.y + player.radius > CANVAS_HEIGHT - COURT_PADDING) player.position.y = CANVAS_HEIGHT - COURT_PADDING - player.radius;
+        // Update position
+        this.position = this.position.add(this.velocity);
 
-        // Check ball possession
-        if (dist < player.radius + gameState.ball.radius && !gameState.ball.owner) {
-            gameState.ball.owner = player;
-            player.hasBall = true;
+        // Boundary collisions
+        if (this.position.x - this.radius < 0) this.position.x = this.radius;
+        if (this.position.x + this.radius > COURT_WIDTH) this.position.x = COURT_WIDTH - this.radius;
+        if (this.position.y - this.radius < 0) this.position.y = this.radius;
+        if (this.position.y + this.radius > COURT_HEIGHT) this.position.y = COURT_HEIGHT - this.radius;
+
+        // Apply friction when idle
+        if (!this.hasBall) {
+            this.velocity.x *= 0.95;
+            this.velocity.y *= 0.95;
         }
+    }
+
+    updateAI() {
+        // AI moves toward ball
+        const dx = ball.position.x - this.position.x;
+        const dy = ball.position.y - this.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0) {
+            let speed = 4;
+            if (gameState.difficulty === 'hard') speed = 5.5;
+            if (gameState.difficulty === 'easy') speed = 2.5;
+
+            this.velocity.x = (dx / dist) * speed;
+            this.velocity.y = (dy / dist) * speed;
+        }
+    }
+
+    draw() {
+        // Draw player circle
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw outline
+        ctx.strokeStyle = this.hasBall ? '#FFD700' : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = this.hasBall ? 3 : 2;
+        ctx.beginPath();
+        ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Draw player number
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.isOpponent ? '2' : '1', this.position.x, this.position.y);
+    }
+
+    distanceTo(other) {
+        return this.position.distance(other.position);
     }
 }
 
-function checkPlayerCollisions() {
-    for (let i = 0; i < gameState.players.length; i++) {
-        for (let j = i + 1; j < gameState.players.length; j++) {
-            const p1 = gameState.players[i];
-            const p2 = gameState.players[j];
-            const dist = p1.position.distance(p2.position);
-            const minDist = p1.radius + p2.radius;
+// ===== GAME FUNCTIONS =====
+function initGame() {
+    gameState.running = true;
+    gameState.paused = false;
+    gameState.playerScore = 0;
+    gameState.opponentScore = 0;
+    gameState.timeRemaining = GAME_TIME;
+    gameState.difficulty = document.getElementById('difficultySelect').value;
 
-            if (dist < minDist) {
-                // Collision! Push players apart
-                const overlap = minDist - dist;
-                const direction = p2.position.subtract(p1.position).normalize();
-                const push = direction.multiply(overlap / 2);
-                p1.position = p1.position.subtract(push);
-                p2.position = p2.position.add(push);
-            }
-        }
-    }
+    player = new Player(COURT_WIDTH * 0.25, COURT_HEIGHT * 0.5, false);
+    opponent = new Player(COURT_WIDTH * 0.75, COURT_HEIGHT * 0.5, true);
+    ball = new Ball(COURT_WIDTH / 2, COURT_HEIGHT * 0.3);
+
+    isAiming = false;
+    aimPower = 0;
+
+    gameLoop();
 }
 
-function checkBallCollisions() {
-    // Ball with players
-    for (let player of gameState.players) {
-        const dist = player.position.distance(gameState.ball.position);
-        if (dist < player.radius + gameState.ball.radius && !player.hasBall) {
-            player.hasBall = true;
-            gameState.ball.owner = player;
-            gameState.ball.velocity = new Vector(0, 0);
-        }
-    }
+function updateGame() {
+    if (!gameState.running || gameState.paused) return;
 
-    // Ball with hoop (scoring)
-    const distToHoop = gameState.ball.position.distance(new Vector(HOOP_X, HOOP_Y));
-    if (distToHoop < HOOP_RADIUS && gameState.ball.position.y > HOOP_Y - 50) {
-        // Score!
-        if (gameState.ball.owner && gameState.ball.owner.team === 1) {
-            gameState.score1 += 2;
-        } else if (gameState.ball.owner && gameState.ball.owner.team === 2) {
-            gameState.score2 += 2;
-        }
-
-        // Reset ball
-        gameState.ball.position = new Vector(HOOP_X, HOOP_Y - 200);
-        gameState.ball.velocity = new Vector(0, 0);
-        if (gameState.ball.owner) {
-            gameState.ball.owner.hasBall = false;
-        }
-        gameState.ball.owner = null;
-
-        // Give ball to random player
-        const randomPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-        randomPlayer.hasBall = true;
-        gameState.ball.owner = randomPlayer;
-    }
-}
-
-function update() {
-    if (!gameState.isActive || gameState.isPaused) return;
-
-    // Update game time
-    gameState.gameTime -= 1 / 60;
-    if (gameState.gameTime <= 0) {
-        endGame();
-        return;
-    }
-
-    // Update all players
-    gameState.players[0].update(gameState.keys, gameState.mousePos, gameState.ball.position);
+    // Update players
+    player.update();
+    opponent.update();
 
     // Update ball
-    if (gameState.ball.owner) {
-        gameState.ball.position = gameState.ball.owner.position.add(new Vector(0, -25));
-    } else {
-        gameState.ball.update();
+    if (!player.hasBall && !opponent.hasBall) {
+        ball.update();
     }
 
-    // Update AI
-    updateAI();
-
-    // Check collisions
-    checkPlayerCollisions();
-    checkBallCollisions();
-
-    // Update shooting power
-    if (gameState.isAiming) {
-        gameState.shootPower = Math.min(gameState.shootPower + 1, 100);
+    // Check ball possession
+    if (player.distanceTo(ball) < player.radius + ball.radius && !opponent.hasBall) {
+        player.hasBall = true;
+        opponent.hasBall = false;
+        ball.velocity = new Vector(0, 0);
     }
 
+    if (opponent.distanceTo(ball) < opponent.radius + ball.radius && !player.hasBall) {
+        opponent.hasBall = true;
+        player.hasBall = false;
+        ball.velocity = new Vector(0, 0);
+    }
+
+    // Ball follows player
+    if (player.hasBall) {
+        ball.position = new Vector(player.position.x, player.position.y - 25);
+    } else if (opponent.hasBall) {
+        ball.position = new Vector(opponent.position.x, opponent.position.y - 25);
+        // AI shoots occasionally
+        if (Math.random() < 0.02) {
+            shootOpponent();
+        }
+    }
+
+    // Check scoring
+    const distToHoop = ball.position.distance(new Vector(HOOP_X, HOOP_Y));
+    if (distToHoop < HOOP_RADIUS && ball.position.y < HOOP_Y + 40) {
+        if (player.hasBall) {
+            gameState.playerScore += 2;
+        } else if (opponent.hasBall) {
+            gameState.opponentScore += 2;
+        }
+        resetBall();
+    }
+
+    // Update timer
+    gameState.timeRemaining -= 1 / 60;
+    if (gameState.timeRemaining <= 0) {
+        endGame();
+    }
+
+    // Update HUD
     updateHUD();
 }
 
-function draw() {
-    const ctx = gameState.ctx;
+function shootOpponent() {
+    const direction = new Vector(HOOP_X - opponent.position.x, HOOP_Y - opponent.position.y).normalize();
+    const power = 8 + Math.random() * 4;
+    ball.shoot(direction, power);
+    opponent.hasBall = false;
+}
 
+function resetBall() {
+    ball.position = new Vector(COURT_WIDTH / 2, COURT_HEIGHT * 0.3);
+    ball.velocity = new Vector(0, 0);
+    player.hasBall = false;
+    opponent.hasBall = false;
+}
+
+function drawGame() {
     // Clear court
     ctx.fillStyle = '#1a5c1a';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, COURT_WIDTH, COURT_HEIGHT);
 
-    // Draw court border
+    // Draw court lines
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
-    ctx.strokeRect(COURT_PADDING, COURT_PADDING, CANVAS_WIDTH - COURT_PADDING * 2, CANVAS_HEIGHT - COURT_PADDING * 2);
+    ctx.strokeRect(0, 0, COURT_WIDTH, COURT_HEIGHT);
 
     // Draw center line
     ctx.setLineDash([10, 10]);
     ctx.beginPath();
-    ctx.moveTo(CANVAS_WIDTH / 2, COURT_PADDING);
-    ctx.lineTo(CANVAS_WIDTH / 2, CANVAS_HEIGHT - COURT_PADDING);
+    ctx.moveTo(COURT_WIDTH / 2, 0);
+    ctx.lineTo(COURT_WIDTH / 2, COURT_HEIGHT);
     ctx.stroke();
     ctx.setLineDash([]);
 
     // Draw hoop
-    ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
     ctx.beginPath();
-    ctx.arc(HOOP_X, HOOP_Y, HOOP_RADIUS, 0, Math.PI * 2);
+    ctx.arc(HOOP_X, HOOP_Y, HOOP_RADIUS * 1.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = '#FFD700';
@@ -499,132 +358,172 @@ function draw() {
     ctx.arc(HOOP_X, HOOP_Y, HOOP_RADIUS, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Draw players
-    for (let player of gameState.players) {
-        player.draw(ctx);
-    }
+    // Draw backboard
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.fillRect(HOOP_X - 40, HOOP_Y - 30, 80, 20);
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(HOOP_X - 40, HOOP_Y - 30, 80, 20);
 
-    // Draw ball
-    gameState.ball.draw(ctx);
+    // Draw players and ball
+    player.draw();
+    opponent.draw();
+    ball.draw();
 
-    // Draw aiming crosshair
-    if (gameState.isAiming) {
-        const player = gameState.players[0];
-        const direction = gameState.mousePos.subtract(player.position).normalize();
-        
+    // Draw aiming line
+    if (isAiming && player.hasBall) {
+        const direction = new Vector(mouseX - player.position.x, mouseY - player.position.y).normalize();
+
         ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.beginPath();
         ctx.moveTo(player.position.x, player.position.y);
-        ctx.lineTo(
-            player.position.x + direction.x * 300,
-            player.position.y + direction.y * 300
-        );
+        ctx.lineTo(player.position.x + direction.x * 300, player.position.y + direction.y * 300);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Draw power meter
+        // Draw power indicator
+        const barWidth = 100;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(player.position.x - 50, player.position.y - 80, 100, 20);
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(player.position.x - 50, player.position.y - 80, gameState.shootPower, 20);
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(player.position.x - 50, player.position.y - 80, 100, 20);
+        ctx.fillRect(player.position.x - barWidth / 2, player.position.y - 60, barWidth, 15);
+        ctx.fillStyle = '#FF5722';
+        ctx.fillRect(player.position.x - barWidth / 2, player.position.y - 60, (aimPower / 100) * barWidth, 15);
     }
 }
 
 function updateHUD() {
-    const minutes = Math.floor(gameState.gameTime / 60);
-    const seconds = Math.floor(gameState.gameTime % 60);
-    const timeStr = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    document.getElementById('playerScore').textContent = gameState.playerScore;
+    document.getElementById('opponentScore').textContent = gameState.opponentScore;
 
-    document.getElementById('score1').textContent = gameState.score1;
-    document.getElementById('score2').textContent = gameState.score2;
-    document.getElementById('timer').textContent = timeStr;
-    
-    const player = gameState.players[0];
-    const staminaPercent = (player.stamina / MAX_STAMINA) * 100;
-    document.getElementById('staminaBar').style.width = staminaPercent + '%';
+    const time = Math.ceil(gameState.timeRemaining);
+    document.getElementById('timer').textContent = time;
 
-    const ballOwner = gameState.ball.owner;
-    if (ballOwner) {
-        document.getElementById('ballStatus').textContent = `Ball: ${ballOwner.team === 1 ? 'YOUR TEAM' : 'OPPONENT'}`;
-    } else {
-        document.getElementById('ballStatus').textContent = 'Ball: LOOSE';
+    if (time <= 10) {
+        document.getElementById('timer').classList.add('warning');
     }
-}
 
-function togglePause() {
-    if (!gameState.gameOver) {
-        gameState.isPaused = !gameState.isPaused;
-        document.getElementById('pauseMenu').classList.toggle('active');
-    }
-}
-
-function resumeGame() {
-    gameState.isPaused = false;
-    document.getElementById('pauseMenu').classList.remove('active');
-}
-
-function endGame() {
-    gameState.isActive = false;
-    gameState.gameOver = true;
-
-    document.getElementById('gameHUD').classList.add('hidden');
-    document.getElementById('gameOverScreen').classList.add('active');
-
-    document.getElementById('finalScore1').textContent = gameState.score1;
-    document.getElementById('finalScore2').textContent = gameState.score2;
-
-    if (gameState.score1 > gameState.score2) {
-        document.getElementById('gameOverTitle').textContent = '🏆 YOU WIN! 🏆';
-        document.getElementById('gameOverMessage').textContent = 'Congratulations! You\'ve won the match!';
-        document.getElementById('gameOverTitle').style.color = '#FFD700';
-    } else if (gameState.score2 > gameState.score1) {
-        document.getElementById('gameOverTitle').textContent = 'GAME OVER';
-        document.getElementById('gameOverMessage').textContent = 'The opposing team won this match.';
-        document.getElementById('gameOverTitle').style.color = '#FF6B6B';
-    } else {
-        document.getElementById('gameOverTitle').textContent = 'TIE GAME';
-        document.getElementById('gameOverMessage').textContent = 'Both teams are evenly matched!';
-        document.getElementById('gameOverTitle').style.color = '#4488FF';
-    }
-}
-
-function startGame() {
-    document.getElementById('mainMenu').classList.remove('active');
-    document.getElementById('instructions').classList.remove('active');
-    document.getElementById('gameOverScreen').classList.remove('active');
-    document.getElementById('gameHUD').classList.remove('hidden');
-    
-    initGame();
-    gameLoop();
-}
-
-function returnToMenu() {
-    gameState.isActive = false;
-    document.getElementById('pauseMenu').classList.remove('active');
-    document.getElementById('gameOverScreen').classList.remove('active');
-    document.getElementById('gameHUD').classList.add('hidden');
-    document.getElementById('mainMenu').classList.add('active');
-}
-
-function toggleInstructions() {
-    document.getElementById('instructions').classList.toggle('active');
+    const powerPercent = Math.min(aimPower, 100);
+    document.getElementById('powerMeterFill').style.width = powerPercent + '%';
 }
 
 function gameLoop() {
-    update();
-    draw();
-    
-    if (gameState.isActive) {
+    updateGame();
+    drawGame();
+
+    if (gameState.running) {
         requestAnimationFrame(gameLoop);
     }
 }
 
-// ===== START GAME ON LOAD =====
-window.addEventListener('load', () => {
+function endGame() {
+    gameState.running = false;
+
+    document.getElementById('gameScreen').classList.remove('active');
+    document.getElementById('gameOverScreen').classList.add('active');
+
+    document.getElementById('finalPlayerScore').textContent = gameState.playerScore;
+    document.getElementById('finalOpponentScore').textContent = gameState.opponentScore;
+
+    let message = '';
+    let title = '';
+    let resultClass = '';
+
+    if (gameState.playerScore > gameState.opponentScore) {
+        message = '🎉 YOU WIN! 🎉';
+        title = 'VICTORY';
+        resultClass = 'win';
+    } else if (gameState.playerScore < gameState.opponentScore) {
+        message = 'OPPONENT WINS!';
+        title = 'DEFEAT';
+        resultClass = 'lose';
+    } else {
+        message = 'ITS A TIE!';
+        title = 'TIED GAME';
+    }
+
+    document.getElementById('resultTitle').textContent = title;
+    document.getElementById('resultMessage').textContent = message;
+    document.getElementById('resultMessage').className = 'result-message ' + resultClass;
+}
+
+function pauseGame() {
+    if (gameState.running) {
+        gameState.paused = true;
+        document.getElementById('pauseOverlay').classList.remove('hidden');
+    }
+}
+
+function resumeGame() {
+    gameState.paused = false;
+    document.getElementById('pauseOverlay').classList.add('hidden');
+}
+
+function showInstructions() {
+    document.getElementById('mainMenu').classList.remove('active');
+    document.getElementById('instructionsScreen').classList.add('active');
+}
+
+function showSettings() {
+    document.getElementById('mainMenu').classList.remove('active');
+    document.getElementById('settingsScreen').classList.add('active');
+}
+
+function startGame() {
+    document.getElementById('mainMenu').classList.remove('active');
+    document.getElementById('instructionsScreen').classList.remove('active');
+    document.getElementById('settingsScreen').classList.remove('active');
+    document.getElementById('gameOverScreen').classList.remove('active');
+    document.getElementById('gameScreen').classList.add('active');
+    document.getElementById('pauseOverlay').classList.add('hidden');
+    document.getElementById('timer').classList.remove('warning');
+
+    initGame();
+}
+
+function backToMenu() {
+    gameState.running = false;
     document.getElementById('mainMenu').classList.add('active');
+    document.getElementById('instructionsScreen').classList.remove('active');
+    document.getElementById('settingsScreen').classList.remove('active');
+    document.getElementById('gameOverScreen').classList.remove('active');
+    document.getElementById('gameScreen').classList.remove('active');
+    document.getElementById('pauseOverlay').classList.add('hidden');
+}
+
+// ===== EVENT LISTENERS =====
+document.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+});
+
+document.addEventListener('mousedown', (e) => {
+    if (gameState.running && !gameState.paused && player.hasBall && !isAiming) {
+        isAiming = true;
+        aimPower = 0;
+    }
+});
+
+document.addEventListener('mousemove', () => {
+    if (isAiming && gameState.running && !gameState.paused) {
+        aimPower = Math.min(aimPower + 2, 100);
+    }
+});
+
+document.addEventListener('mouseup', (e) => {
+    if (isAiming && player.hasBall && gameState.running && !gameState.paused) {
+        const direction = new Vector(mouseX - player.position.x, mouseY - player.position.y).normalize();
+        const power = 5 + (aimPower / 100) * 15;
+        ball.shoot(direction, power);
+        player.hasBall = false;
+        isAiming = false;
+        aimPower = 0;
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && gameState.running && !gameState.paused) {
+        e.preventDefault();
+    }
 });
