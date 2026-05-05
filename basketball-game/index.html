@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏀 HOOPLAND - Basketball Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Main Menu -->
+        <div id="mainMenu" class="menu active">
+            <div class="menu-content">
+                <h1>🏀 HOOPLAND</h1>
+                <p class="subtitle">Professional Basketball Game</p>
+                <button onclick="startGame()" class="btn btn-primary">START GAME</button>
+                <button onclick="toggleInstructions()" class="btn btn-secondary">HOW TO PLAY</button>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div id="instructions" class="menu">
+            <div class="menu-content instructions-box">
+                <h2>HOW TO PLAY 🎮</h2>
+                <div class="instructions-text">
+                    <h3>Controls:</h3>
+                    <p><strong>W/A/S/D</strong> - Move your player</p>
+                    <p><strong>MOUSE</strong> - Aim at the hoop</p>
+                    <p><strong>CLICK</strong> - Shoot (hold for power)</p>
+                    <p><strong>SPACEBAR</strong> - Pass to teammates</p>
+                    <p><strong>SHIFT</strong> - Sprint (uses stamina)</p>
+                    <p><strong>P</strong> - Pause game</p>
+                    
+                    <h3>Objective:</h3>
+                    <p>Score 2-point baskets and outscore the opposing team!</p>
+                    
+                    <h3>Tips:</h3>
+                    <ul>
+                        <li>Aim for the center of the hoop</li>
+                        <li>Manage your stamina wisely</li>
+                        <li>Pass to open teammates</li>
+                        <li>Play defense to prevent opponents from scoring</li>
+                    </ul>
+                </div>
+                <button onclick="toggleInstructions()" class="btn btn-primary">BACK</button>
+            </div>
+        </div>
+
+        <!-- Game HUD -->
+        <div id="gameHUD" class="hud hidden">
+            <div class="score-board">
+                <div class="team team-1">
+                    <span class="team-name">YOUR TEAM</span>
+                    <span class="team-score" id="score1">0</span>
+                </div>
+                <div class="timer" id="timer">12:00</div>
+                <div class="team team-2">
+                    <span class="team-name">OPPONENTS</span>
+                    <span class="team-score" id="score2">0</span>
+                </div>
+            </div>
+            <div class="player-stats">
+                <div class="stat">
+                    <label>STAMINA</label>
+                    <div class="stamina-bar">
+                        <div class="stamina-fill" id="staminaBar"></div>
+                    </div>
+                </div>
+                <div class="stat">
+                    <label id="ballStatus">Ball: OPPONENT</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="menu">
+            <div class="menu-content">
+                <h2 id="gameOverTitle">GAME OVER</h2>
+                <p class="final-score">
+                    <span id="finalScore1">0</span> - <span id="finalScore2">0</span>
+                </p>
+                <p id="gameOverMessage">Final Result</p>
+                <button onclick="returnToMenu()" class="btn btn-primary">MAIN MENU</button>
+                <button onclick="startGame()" class="btn btn-secondary">PLAY AGAIN</button>
+            </div>
+        </div>
+
+        <!-- Pause Menu -->
+        <div id="pauseMenu" class="menu">
+            <div class="menu-content">
+                <h2>PAUSED</h2>
+                <button onclick="resumeGame()" class="btn btn-primary">RESUME</button>
+                <button onclick="returnToMenu()" class="btn btn-secondary">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
